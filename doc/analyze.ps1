@@ -28,12 +28,6 @@ function New-CardId {
 }
 
 # ── Helper: Compute source hash for dedup ────────────────────────────
-function Get-SourceHash($s) {
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($s.ToLower().Trim('/'))
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    return ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") }) -join "" | Select-Object -First 1
-    # Simplified: use first 12 chars
-}
 function Get-ShortHash($s) {
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($s.ToLower().Trim('/'))
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -286,6 +280,8 @@ function Invoke-ClaudeAnalysis($prompt) {
     $proc.StartInfo.RedirectStandardError = $true
     $proc.StartInfo.CreateNoWindow = $true
     $proc.StartInfo.WorkingDirectory = $TEMP_DIR
+    # Allow claude CLI to run inside a Claude Code session
+    $proc.StartInfo.EnvironmentVariables.Remove("CLAUDECODE") | Out-Null
 
     $proc.Start() | Out-Null
 
@@ -396,7 +392,7 @@ function Update-Index($newCards) {
         $index.Add($card) | Out-Null
     }
 
-    $indexJson = $index | ConvertTo-Json -Depth 5
+    $indexJson = @($index) | ConvertTo-Json -Depth 5
     Set-Content -Path $INDEX_FILE -Value $indexJson -Encoding UTF8
     Write-Host "[RADAR] Index updated: $($index.Count) total cards"
 }
