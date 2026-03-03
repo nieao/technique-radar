@@ -32,27 +32,27 @@ discover.ps1 ──► GitHub API ──► candidates.json    search.ps1
 ### Mode 1: Analyze a Source
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "https://github.com/user/repo" -Timeout 180
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "C:\Projects\my-agent" -Timeout 180
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "skill:openclaw-skill-authoring" -Timeout 120
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "https://github.com/user/repo" -Timeout 180
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "C:\Projects\my-agent" -Timeout 180
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "skill:openclaw-skill-authoring" -Timeout 120
 ```
 
 ### Mode 2: Discover New Repos
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\discover.ps1" -Topics "ai-agent,mcp-server,automation" -Timeout 120
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\discover.ps1" -Topics "ai-agent,mcp-server,automation" -Timeout 120
 ```
 
 ### Mode 3: Search Knowledge Base
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\search.ps1" -Query "async pattern agent" -TopN 10
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\search.ps1" -Query "async pattern agent" -TopN 10
 ```
 
 ### Mode 4: Batch Analyze All Skills
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "skill:*" -Timeout 300
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\skills\technique-radar\analyze.ps1" -Source "skill:*" -Timeout 300
 ```
 
 ## Parameters
