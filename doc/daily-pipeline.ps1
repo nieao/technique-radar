@@ -52,7 +52,7 @@ if (-not $DiscoverOnly) {
 
                 # Mark as analyzing
                 $candidate.status = "analyzing"
-                $candidates | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
+                @($candidates) | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
 
                 try {
                     & (Join-Path $SKILL_DIR "analyze.ps1") -Source $candidate.url -Timeout 180
@@ -68,7 +68,7 @@ if (-not $DiscoverOnly) {
                 }
 
                 # Save updated status
-                $candidates | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
+                @($candidates) | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
             }
 
             Write-Host "`n[PIPELINE] Analyzed $analyzed/$($toAnalyze.Count) repos"
