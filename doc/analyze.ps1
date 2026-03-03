@@ -69,7 +69,14 @@ if ($Source -match "^https?://github\.com/") {
 if ((-not $Force) -and -not ($SourceType -eq "skill" -and $skillName -eq "*")) {
     $existingHash = Get-ShortHash $Source
     if (Test-Path $INDEX_FILE) {
-        $existingIndex = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
+        $existingIndex = @()
+        try {
+            $raw = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($raw -is [array]) { $existingIndex = $raw }
+            elseif ($raw) { $existingIndex = @($raw) }
+        } catch {
+            Write-Host "[RADAR] WARN: Could not parse index.json, skipping dedup check"
+        }
         $alreadyDone = $existingIndex | Where-Object { $_.source_hash -eq $existingHash }
         if ($alreadyDone) {
             Write-Host "[RADAR] Already analyzed this source. Use -Force to re-analyze."
@@ -375,8 +382,10 @@ function Update-Index($newCards) {
         try {
             $existing = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($existing -is [array]) { $index = [System.Collections.ArrayList]@($existing) }
-            else { $index = [System.Collections.ArrayList]@($existing) }
+            elseif ($existing) { $index = [System.Collections.ArrayList]@(,$existing) }
+            else { $index = [System.Collections.ArrayList]@() }
         } catch {
+            Write-Host "[RADAR] WARN: Could not parse index.json, starting fresh index"
             $index = [System.Collections.ArrayList]@()
         }
     } else {

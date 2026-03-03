@@ -32,7 +32,10 @@ if (-not $DiscoverOnly) {
         try {
             $raw = Get-Content $CANDIDATES_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($raw -is [array]) { $candidates = $raw }
-        } catch {}
+            elseif ($raw) { $candidates = @($raw) }
+        } catch {
+            Write-Host "[PIPELINE] WARN: Could not parse candidates.json"
+        }
 
         # Filter: pending + high enough score
         $toAnalyze = $candidates |
@@ -84,9 +87,14 @@ $today = Get-Date -Format "yyyy-MM-dd"
 if (Test-Path $indexFile) {
     try {
         $idx = Get-Content $indexFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        $totalCards = $idx.Count
-        $todayCards = ($idx | Where-Object { $_.discovered -eq $today }).Count
-    } catch {}
+        if ($idx -and $idx -isnot [array]) { $idx = @($idx) }
+        if ($idx) {
+            $totalCards = $idx.Count
+            $todayCards = ($idx | Where-Object { $_.discovered -eq $today }).Count
+        }
+    } catch {
+        Write-Host "[PIPELINE] WARN: Could not parse index.json"
+    }
 }
 
 $Duration = ((Get-Date) - [datetime]$StartedAt).TotalSeconds

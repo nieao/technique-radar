@@ -25,17 +25,23 @@ if (Test-Path $CANDIDATES_FILE) {
     try {
         $raw = Get-Content $CANDIDATES_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($raw -is [array]) { $existingCandidates = $raw }
-    } catch {}
+        elseif ($raw) { $existingCandidates = @($raw) }
+    } catch {
+        Write-Host "[DISCOVER] WARN: Could not parse candidates.json, starting fresh"
+    }
 }
 
 $analyzedUrls = @{}
 if (Test-Path $INDEX_FILE) {
     try {
         $idx = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($idx -and $idx -isnot [array]) { $idx = @($idx) }
         foreach ($entry in $idx) {
             if ($entry.source) { $analyzedUrls[$entry.source] = $true }
         }
-    } catch {}
+    } catch {
+        Write-Host "[DISCOVER] WARN: Could not parse index.json, skipping dedup check"
+    }
 }
 $existingUrls = @{}
 foreach ($c in $existingCandidates) {
