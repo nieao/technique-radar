@@ -33,7 +33,11 @@ try {
 Write-Host "[SEARCH] Searching $($index.Count) cards for: $Query"
 
 # ── Tokenize query ────────────────────────────────────────────────────
-$queryTokens = $Query.ToLower() -split "\s+" | Where-Object { $_.Length -gt 1 }
+$isWildcard = $Query -eq "*"
+$queryTokens = @()
+if (-not $isWildcard) {
+    $queryTokens = $Query.ToLower() -split "\s+" | Where-Object { $_.Length -gt 1 }
+}
 
 # ── Score each card ───────────────────────────────────────────────────
 $scored = @()
@@ -44,6 +48,16 @@ foreach ($card in $index) {
     if ($SourceType -and ($card.source_type -ne $SourceType)) { continue }
     if ($MinCleverness -and ($card.cleverness -lt $MinCleverness)) { continue }
     if ($MinReusability -and ($card.reusability -lt $MinReusability)) { continue }
+
+    # Wildcard: include all cards, score by quality
+    if ($isWildcard) {
+        $scored += @{
+            card    = $card
+            score   = ($card.cleverness + $card.reusability) * 0.1
+            matched = 0
+        }
+        continue
+    }
 
     # Build searchable text from card metadata
     $searchText = @(
