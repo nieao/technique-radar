@@ -1,4 +1,4 @@
-param(
+﻿param(
     [int]$MaxAnalyze = 3,       # Max repos to deep-analyze per run
     [int]$MinScore = 6,         # Minimum relevance score to auto-analyze
     [switch]$DiscoverOnly,      # Only discover, skip analysis
@@ -9,6 +9,9 @@ $ErrorActionPreference = "Stop"
 $SKILL_DIR       = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CANDIDATES_FILE = Join-Path $SKILL_DIR "candidates.json"
 $StartedAt       = Get-Date -Format "o"
+
+# ── Import shared utilities ─────────────────────────────────────────
+. (Join-Path $SKILL_DIR "lib-json.ps1")
 
 Write-Host "============================================"
 Write-Host "  TECHNIQUE RADAR - Daily Pipeline"
@@ -28,19 +31,12 @@ if (-not $DiscoverOnly) {
     if (-not (Test-Path $CANDIDATES_FILE)) {
         Write-Host "[PIPELINE] No candidates file found. Run discovery first."
     } else {
-        $candidates = @()
-        try {
-            $raw = Get-Content $CANDIDATES_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($raw -is [array]) { $candidates = $raw }
-            elseif ($raw) { $candidates = @($raw) }
-        } catch {
-            Write-Host "[PIPELINE] WARN: Could not parse candidates.json"
-        }
+        $candidates = Read-JsonArray $CANDIDATES_FILE
 
         # Filter: pending + high enough score
         $toAnalyze = $candidates |
             Where-Object { $_.status -eq "pending" -and $_.relevance_score -ge $MinScore } |
-            Sort-Object { -$_.relevance_score } |
+            Sort-Object @{ Expression = { $_.relevance_score }; Descending = $true } |
             Select-Object -First $MaxAnalyze
 
         if ($toAnalyze.Count -eq 0) {
@@ -52,7 +48,7 @@ if (-not $DiscoverOnly) {
 
                 # Mark as analyzing
                 $candidate.status = "analyzing"
-                @($candidates) | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
+                Write-JsonArray $CANDIDATES_FILE $candidates
 
                 try {
                     & (Join-Path $SKILL_DIR "analyze.ps1") -Source $candidate.url -Timeout 180
@@ -68,7 +64,7 @@ if (-not $DiscoverOnly) {
                 }
 
                 # Save updated status
-                @($candidates) | ConvertTo-Json -Depth 5 | Set-Content -Path $CANDIDATES_FILE -Encoding UTF8
+                Write-JsonArray $CANDIDATES_FILE $candidates
             }
 
             Write-Host "`n[PIPELINE] Analyzed $analyzed/$($toAnalyze.Count) repos"
@@ -85,16 +81,9 @@ $todayCards = 0
 $today = Get-Date -Format "yyyy-MM-dd"
 
 if (Test-Path $indexFile) {
-    try {
-        $idx = Get-Content $indexFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($idx -and $idx -isnot [array]) { $idx = @($idx) }
-        if ($idx) {
-            $totalCards = $idx.Count
-            $todayCards = ($idx | Where-Object { $_.discovered -eq $today }).Count
-        }
-    } catch {
-        Write-Host "[PIPELINE] WARN: Could not parse index.json"
-    }
+    $idx = Read-JsonArray $indexFile
+    $totalCards = $idx.Count
+    $todayCards = ($idx | Where-Object { $_.discovered -eq $today }).Count
 }
 
 $Duration = ((Get-Date) - [datetime]$StartedAt).TotalSeconds
@@ -124,5 +113,5 @@ if (Test-Path $OPENCLAW_BIN) {
     $msg = "[RADAR] Daily scan done. +$todayCards cards (total: $totalCards). Duration: $([math]::Round($Duration,1))s"
     try {
         & cmd.exe /c "`"$OPENCLAW_BIN`" message send --channel telegram --message `"$msg`"" 2>$null
-    } catch {}
+    } catch { Write-Verbose "[PIPELINE] Telegram notification failed: $($_.Exception.Message)" }
 }

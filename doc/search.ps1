@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)]
     [string]$Query,
 
@@ -12,8 +12,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $SKILL_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$CARDS_DIR  = Join-Path $SKILL_DIR "cards"
 $INDEX_FILE = Join-Path $SKILL_DIR "index.json"
+
+# Import shared utilities
+. (Join-Path $SKILL_DIR "lib-json.ps1")
 
 if (-not (Test-Path $INDEX_FILE)) {
     Write-Host "[SEARCH] No index found. Run analyze.ps1 first to build your knowledge base."
@@ -21,13 +23,10 @@ if (-not (Test-Path $INDEX_FILE)) {
 }
 
 # ── Load index ────────────────────────────────────────────────────────
-$index = @()
-try {
-    $raw = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($raw -is [array]) { $index = $raw } else { $index = @($raw) }
-} catch {
-    Write-Host "[SEARCH] Error reading index: $($_.Exception.Message)"
-    exit 1
+$index = Read-JsonArray $INDEX_FILE
+if ($index.Count -eq 0) {
+    Write-Host "[SEARCH] Index is empty. Run analyze.ps1 first."
+    exit 0
 }
 
 Write-Host "[SEARCH] Searching $($index.Count) cards for: $Query"
@@ -60,13 +59,13 @@ foreach ($card in $index) {
     }
 
     # Build searchable text from card metadata
-    $searchText = @(
+    $searchText = (@(
         $card.title,
         $card.problem,
         ($card.tags -join " "),
         $card.source_name,
         $card.source_type
-    ) -join " " | ForEach-Object { $_.ToLower() }
+    ) -join " ").ToLower()
 
     # Also load card content for full-text search if the file exists
     $cardContent = ""
@@ -126,7 +125,8 @@ $rank = 0
 foreach ($r in $results) {
     $rank++
     $c = $r.card
-    $tagStr = if ($c.tags) { ($c.tags -join ", ") } else { "-" }
+    $tagStr = "-"
+    if ($c.tags) { $tagStr = ($c.tags -join ", ") }
 
     Write-Host "  [$rank] $($c.title)"
     Write-Host "      Score: $([math]::Round($r.score, 1)) | Clever: $($c.cleverness)/10 | Reuse: $($c.reusability)/10"

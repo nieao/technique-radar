@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Topics = "ai-agent,mcp-server,tool-use,autonomous-agent,llm-agent,claude,browser-use",
     [int]$Since = 7,
     [int]$MinStars = 10,
@@ -13,6 +13,10 @@ $INDEX_FILE     = Join-Path $SKILL_DIR "index.json"
 $TEMP_DIR       = Join-Path $env:TEMP "technique-radar"
 $StartedAt      = Get-Date -Format "o"
 
+# Import shared utilities
+. (Join-Path $SKILL_DIR "lib-json.ps1")
+. (Join-Path $SKILL_DIR "lib-claude.ps1")
+
 New-Item -ItemType Directory -Force -Path $TEMP_DIR | Out-Null
 
 Write-Host "[DISCOVER] Starting repo discovery..."
@@ -20,28 +24,12 @@ Write-Host "[DISCOVER] Topics: $Topics"
 Write-Host "[DISCOVER] Since: $Since days, MinStars: $MinStars"
 
 # ── Load existing candidates and analyzed sources ─────────────────────
-$existingCandidates = @()
-if (Test-Path $CANDIDATES_FILE) {
-    try {
-        $raw = Get-Content $CANDIDATES_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($raw -is [array]) { $existingCandidates = $raw }
-        elseif ($raw) { $existingCandidates = @($raw) }
-    } catch {
-        Write-Host "[DISCOVER] WARN: Could not parse candidates.json, starting fresh"
-    }
-}
+$existingCandidates = Read-JsonArray $CANDIDATES_FILE
 
 $analyzedUrls = @{}
-if (Test-Path $INDEX_FILE) {
-    try {
-        $idx = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($idx -and $idx -isnot [array]) { $idx = @($idx) }
-        foreach ($entry in $idx) {
-            if ($entry.source) { $analyzedUrls[$entry.source] = $true }
-        }
-    } catch {
-        Write-Host "[DISCOVER] WARN: Could not parse index.json, skipping dedup check"
-    }
+$idx = Read-JsonArray $INDEX_FILE
+foreach ($entry in $idx) {
+    if ($entry.source) { $analyzedUrls[$entry.source] = $true }
 }
 $existingUrls = @{}
 foreach ($c in $existingCandidates) {
@@ -71,7 +59,7 @@ foreach ($topic in $topicList) {
             # Try gh CLI auth
             try {
                 $ghToken = (gh auth token 2>$null)
-            } catch {}
+            } catch { Write-Verbose "[DISCOVER] gh auth token not available" }
         }
         if ($ghToken) {
             $headers["Authorization"] = "Bearer $ghToken"
@@ -88,10 +76,17 @@ foreach ($topic in $topicList) {
                 continue
             }
 
+            # Safe description extraction (PS5.1 compatible, null-safe)
+            $desc = ""
+            if ($repo.description -and $repo.description.Length -gt 0) {
+                $maxLen = [Math]::Min(200, $repo.description.Length)
+                $desc = $repo.description.Substring(0, $maxLen)
+            }
+
             $candidate = @{
                 url              = $repoUrl
                 name             = $repo.full_name
-                description      = if ($repo.description) { $repo.description.Substring(0, [Math]::Min(200, $repo.description.Length)) } else { "" }
+                description      = $desc
                 stars            = $repo.stargazers_count
                 language         = $repo.language
                 topics           = $repo.topics
@@ -157,64 +152,39 @@ REPOSITORIES:
 $candidateList
 "@
 
-    $promptFile = Join-Path $TEMP_DIR "scoring-prompt.txt"
-    Set-Content -Path $promptFile -Value $scoringPrompt -Encoding UTF8
+    $scoreOutput = Invoke-ClaudeCli -Prompt $scoringPrompt -TimeoutSeconds $Timeout -WorkDir $TEMP_DIR
 
-    $cmdLine = "type `"$promptFile`" | claude -p --output-format text"
-    $proc = New-Object System.Diagnostics.Process
-    $proc.StartInfo.FileName = "cmd.exe"
-    $proc.StartInfo.Arguments = "/c $cmdLine"
-    $proc.StartInfo.UseShellExecute = $false
-    $proc.StartInfo.RedirectStandardOutput = $true
-    $proc.StartInfo.RedirectStandardError = $true
-    $proc.StartInfo.CreateNoWindow = $true
-    $proc.StartInfo.WorkingDirectory = $TEMP_DIR
-    # Allow claude CLI to run inside a Claude Code session
-    $proc.StartInfo.EnvironmentVariables.Remove("CLAUDECODE") | Out-Null
-    $proc.Start() | Out-Null
-
-    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
-    $stderrTask = $proc.StandardError.ReadToEndAsync()
-    $exited = $proc.WaitForExit(90 * 1000)
-
-    if ($exited) {
-        $scoreOutput = $stdoutTask.Result
-
-        # Extract JSON array from output
-        if ($scoreOutput -match '\[[\s\S]*\]') {
-            try {
-                $scores = $Matches[0] | ConvertFrom-Json
-                foreach ($s in $scores) {
-                    $i = $s.idx - 1
-                    if ($i -ge 0 -and $i -lt $newCandidates.Count) {
-                        $newCandidates[$i].relevance_score = $s.score
-                        $newCandidates[$i].relevance_reason = $s.reason
-                        if ($s.score -lt 4) {
-                            $newCandidates[$i].status = "skipped"
-                        }
+    if ($scoreOutput -and $scoreOutput -match '\[[\s\S]*\]') {
+        try {
+            $scores = $Matches[0] | ConvertFrom-Json
+            foreach ($s in $scores) {
+                $i = $s.idx - 1
+                if ($i -ge 0 -and $i -lt $newCandidates.Count) {
+                    $newCandidates[$i].relevance_score = $s.score
+                    $newCandidates[$i].relevance_reason = $s.reason
+                    if ($s.score -lt 4) {
+                        $newCandidates[$i].status = "skipped"
                     }
                 }
-            } catch {
-                Write-Host "[DISCOVER] Could not parse scoring output"
             }
+        } catch {
+            Write-Host "[DISCOVER] Could not parse scoring output"
         }
-    } else {
-        try { $proc.Kill() } catch {}
-        Write-Host "[DISCOVER] Scoring timed out"
+    } elseif (-not $scoreOutput) {
+        Write-Host "[DISCOVER] Scoring timed out or failed"
     }
-    $proc.Dispose()
 }
 
 # ── Merge and save candidates ─────────────────────────────────────────
 $allCandidates = $existingCandidates + $newCandidates
 
 # Sort: pending first, then by relevance score descending
-$allCandidates = $allCandidates | Sort-Object {
-    if ($_.status -eq "pending") { 0 } else { 1 }
-}, { -($_.relevance_score) }
+$allCandidates = $allCandidates | Sort-Object @(
+    @{ Expression = { if ($_.status -eq "pending") { 0 } else { 1 } }; Ascending = $true },
+    @{ Expression = { $_.relevance_score }; Descending = $true }
+)
 
-$candidatesJson = @($allCandidates) | ConvertTo-Json -Depth 5
-Set-Content -Path $CANDIDATES_FILE -Value $candidatesJson -Encoding UTF8
+Write-JsonArray $CANDIDATES_FILE $allCandidates
 
 # ── Summary ───────────────────────────────────────────────────────────
 $pendingCount = ($allCandidates | Where-Object { $_.status -eq "pending" }).Count

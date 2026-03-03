@@ -1,3 +1,5 @@
+﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Timeout', Justification='Used inside Invoke-ClaudeAnalysis')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'MaxFiles', Justification='Used inside Collect-SourceFiles')]
 param(
     [Parameter(Mandatory=$true)]
     [string]$Source,
@@ -12,6 +14,15 @@ $SKILL_DIR   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CARDS_DIR   = Join-Path $SKILL_DIR "cards"
 $INDEX_FILE  = Join-Path $SKILL_DIR "index.json"
 $TEMP_DIR    = Join-Path $env:TEMP "technique-radar"
+
+# Tunable constants
+$MAX_FILE_CHARS   = 8000   # Max chars per file before truncation
+$MAX_TOTAL_CHARS  = 60000  # Max total material chars
+$MIN_CARD_LENGTH  = 100    # Min chars for a valid card fragment
+
+# Import shared utilities
+. (Join-Path $SKILL_DIR "lib-json.ps1")
+. (Join-Path $SKILL_DIR "lib-claude.ps1")
 $StartedAt   = Get-Date -Format "o"
 
 # Ensure directories exist
@@ -22,55 +33,56 @@ New-Item -ItemType Directory -Force -Path $TEMP_DIR | Out-Null
 
 # ── Helper: Generate unique card ID ──────────────────────────────────
 function New-CardId {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
     $date = Get-Date -Format "yyyyMMdd"
     $rand = -join ((48..57) + (97..102) | Get-Random -Count 6 | ForEach-Object {[char]$_})
     return "tc-$date-$rand"
 }
 
 # ── Helper: Compute source hash for dedup ────────────────────────────
-function Get-ShortHash($s) {
+function Get-ShortHash {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory=$true)][string]$s)
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($s.ToLower().Trim('/'))
     $sha = [System.Security.Cryptography.SHA256]::Create()
     $hash = ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") }) -join ""
     return $hash.Substring(0, 12)
 }
 
-# ── Detect source type ───────────────────────────────────────────────
-$SourceType = ""
-$SourceName = ""
+# ── Validate and detect source type ──────────────────────────────────
+$validated = Test-SourceInput $Source
+if (-not $validated.Valid) {
+    Write-Host "[RADAR] ERROR: Invalid source input: $Source"
+    exit 1
+}
+$SourceType = $validated.Type
+$SourceName = $validated.Name
+$Source = $validated.Sanitized
 $SourceMaterial = ""
 
-if ($Source -match "^https?://github\.com/") {
-    $SourceType = "github"
-    $SourceName = ($Source -replace "https?://github\.com/","" -replace "\.git$","" -replace "/$","")
-    Write-Host "[RADAR] Analyzing GitHub repo: $SourceName"
-} elseif ($Source -match "^skill:(.+)$") {
-    $skillName = $Matches[1]
-    $SourceType = "skill"
+# Handle skill:* batch mode
+$skillName = ""
+if ($SourceType -eq "skill") {
+    $skillName = $SourceName
     if ($skillName -eq "*") {
         Write-Host "[RADAR] Batch mode: analyzing all skills"
     } else {
-        $SourceName = $skillName
         Write-Host "[RADAR] Analyzing skill: $SourceName"
     }
+} elseif ($SourceType -eq "github") {
+    Write-Host "[RADAR] Analyzing GitHub repo: $SourceName"
 } else {
-    $SourceType = "local"
-    $SourceName = Split-Path -Leaf $Source
     Write-Host "[RADAR] Analyzing local code: $SourceName"
 }
 
 # ── Check if already analyzed (skip if -Force) ──────────────────────
 if ((-not $Force) -and -not ($SourceType -eq "skill" -and $skillName -eq "*")) {
     $existingHash = Get-ShortHash $Source
-    if (Test-Path $INDEX_FILE) {
-        $existingIndex = @()
-        try {
-            $raw = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($raw -is [array]) { $existingIndex = $raw }
-            elseif ($raw) { $existingIndex = @($raw) }
-        } catch {
-            Write-Host "[RADAR] WARN: Could not parse index.json, skipping dedup check"
-        }
+    $existingIndex = Read-JsonArray $INDEX_FILE
+    if ($existingIndex.Count -gt 0) {
         $alreadyDone = $existingIndex | Where-Object { $_.source_hash -eq $existingHash }
         if ($alreadyDone) {
             Write-Host "[RADAR] Already analyzed this source. Use -Force to re-analyze."
@@ -82,7 +94,10 @@ if ((-not $Force) -and -not ($SourceType -eq "skill" -and $skillName -eq "*")) {
 
 # ── Gather source material ───────────────────────────────────────────
 
-function Get-GitHubMaterial($repoUrl) {
+function Get-GitHubMaterial {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory=$true)][string]$repoUrl)
     $cloneDir = Join-Path $TEMP_DIR "repo-$(Get-ShortHash $repoUrl)"
     if (Test-Path $cloneDir) { Remove-Item -Recurse -Force $cloneDir }
 
@@ -107,26 +122,36 @@ function Get-GitHubMaterial($repoUrl) {
     return Collect-SourceFiles $cloneDir
 }
 
-function Get-LocalMaterial($path) {
+function Get-LocalMaterial {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory=$true)][string]$path)
     if (-not (Test-Path $path)) {
         return "ERROR: Path not found: $path"
     }
     return Collect-SourceFiles $path
 }
 
-function Get-SkillMaterial($name) {
+function Get-SkillMaterial {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory=$true)][string]$name)
+    # Primary path: OpenClaw skills
     $skillPath = Join-Path "$env:USERPROFILE\.openclaw\skills" $name
     if (-not (Test-Path $skillPath)) {
-        # Try Cowork skills path
-        $skillPath = Join-Path "$env:USERPROFILE\.openclaw\skills" $name
+        # Fallback: Claude Code skills
+        $skillPath = Join-Path "$env:USERPROFILE\.claude\skills" $name
         if (-not (Test-Path $skillPath)) {
-            return "ERROR: Skill not found: $name"
+            return "ERROR: Skill not found: $name (checked .openclaw and .claude)"
         }
     }
     return Collect-SourceFiles $skillPath
 }
 
-function Collect-SourceFiles($rootDir) {
+function Collect-SourceFiles {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory=$true)][string]$rootDir)
     $extensions = @("*.py","*.js","*.ts","*.ps1","*.md","*.json","*.yaml","*.yml","*.toml","*.sh","*.go","*.rs","*.cmd","*.bat")
     $skipDirs = @("node_modules",".git","__pycache__",".venv","dist","build",".next","vendor")
     $material = ""
@@ -170,16 +195,16 @@ function Collect-SourceFiles($rootDir) {
         $content = Get-Content $f.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($content -and $content.Length -gt 0) {
             # Truncate very large files
-            if ($content.Length -gt 8000) {
-                $content = $content.Substring(0, 8000) + "`n... [TRUNCATED at 8000 chars]"
+            if ($content.Length -gt $MAX_FILE_CHARS) {
+                $content = $content.Substring(0, $MAX_FILE_CHARS) + "`n... [TRUNCATED at $MAX_FILE_CHARS chars]"
             }
             $material += "`n=== FILE: $relPath ===`n$content`n"
         }
     }
 
     # Truncate total material if too large
-    if ($material.Length -gt 60000) {
-        $material = $material.Substring(0, 60000) + "`n... [TOTAL MATERIAL TRUNCATED]"
+    if ($material.Length -gt $MAX_TOTAL_CHARS) {
+        $material = $material.Substring(0, $MAX_TOTAL_CHARS) + "`n... [TOTAL MATERIAL TRUNCATED]"
     }
 
     return $material
@@ -187,7 +212,15 @@ function Collect-SourceFiles($rootDir) {
 
 # ── Build analysis prompt ────────────────────────────────────────────
 
-function Build-AnalysisPrompt($sourceType, $sourceName, $sourceUrl, $material) {
+function Build-AnalysisPrompt {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory=$true)][string]$sourceType,
+        [Parameter(Mandatory=$true)][string]$sourceName,
+        [Parameter(Mandatory=$true)][string]$sourceUrl,
+        [Parameter(Mandatory=$true)][string]$material
+    )
     $today = Get-Date -Format "yyyy-MM-dd"
 
     $prompt = @"
@@ -261,57 +294,29 @@ $material
     return $prompt
 }
 
-# ── Execute analysis via Claude CLI ──────────────────────────────────
+# ── Execute analysis via Claude CLI (delegated to lib-claude.ps1) ────
 
-function Invoke-ClaudeAnalysis($prompt) {
-    $promptFile = Join-Path $TEMP_DIR "analysis-prompt.txt"
-    Set-Content -Path $promptFile -Value $prompt -Encoding UTF8
+function Invoke-ClaudeAnalysis {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$AnalysisPrompt
+    )
 
     Write-Host "[RADAR] Sending to Claude for analysis..."
-
-    # Use Claude Code CLI via cmd.exe pipe pattern
-    $cmdLine = "type `"$promptFile`" | claude -p --output-format text"
-
-    $proc = New-Object System.Diagnostics.Process
-    $proc.StartInfo.FileName = "cmd.exe"
-    $proc.StartInfo.Arguments = "/c $cmdLine"
-    $proc.StartInfo.UseShellExecute = $false
-    $proc.StartInfo.RedirectStandardOutput = $true
-    $proc.StartInfo.RedirectStandardError = $true
-    $proc.StartInfo.CreateNoWindow = $true
-    $proc.StartInfo.WorkingDirectory = $TEMP_DIR
-    # Allow claude CLI to run inside a Claude Code session
-    $proc.StartInfo.EnvironmentVariables.Remove("CLAUDECODE") | Out-Null
-
-    $proc.Start() | Out-Null
-
-    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
-    $stderrTask = $proc.StandardError.ReadToEndAsync()
-
-    $exited = $proc.WaitForExit($Timeout * 1000)
-    if (-not $exited) {
-        try { $proc.Kill() } catch {}
-        $proc.Dispose()
-        Write-Host "[RADAR] TIMEOUT after ${Timeout}s"
-        return $null
-    }
-
-    $stdout = $stdoutTask.Result
-    $stderr = $stderrTask.Result
-    $exitCode = $proc.ExitCode
-    $proc.Dispose()
-
-    if ($exitCode -ne 0) {
-        Write-Host "[RADAR] Claude returned exit code $exitCode"
-        Write-Host "[RADAR] stderr: $stderr"
-    }
-
-    return $stdout
+    return Invoke-ClaudeCli -Prompt $AnalysisPrompt -TimeoutSeconds $Timeout -WorkDir $TEMP_DIR
 }
 
 # ── Parse Claude output into individual cards ────────────────────────
 
-function Parse-Cards($rawOutput, $sourceType) {
+function Parse-Cards {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [string]$rawOutput,
+        [Parameter(Mandatory=$true)][string]$sourceType
+    )
     if (-not $rawOutput) { return @() }
 
     $cards = @()
@@ -319,7 +324,7 @@ function Parse-Cards($rawOutput, $sourceType) {
 
     foreach ($rawCard in $rawCards) {
         $rawCard = $rawCard.Trim()
-        if ($rawCard.Length -lt 100) { continue }  # Skip empty/tiny fragments
+        if ($rawCard.Length -lt $MIN_CARD_LENGTH) { continue }  # Skip empty/tiny fragments
 
         # Generate unique ID
         $cardId = New-CardId
@@ -347,7 +352,7 @@ function Parse-Cards($rawOutput, $sourceType) {
         if ($cardContent -match "problem:\s*(.+)") { $problem = $Matches[1].Trim() }
 
         # Save card file
-        $cardFile = Join-Path $CARDS_DIR $sourceType "$cardId.md"
+        $cardFile = Join-Path (Join-Path $CARDS_DIR $sourceType) "$cardId.md"
         Set-Content -Path $cardFile -Value $cardContent -Encoding UTF8
 
         $cards += @{
@@ -372,28 +377,17 @@ function Parse-Cards($rawOutput, $sourceType) {
 
 # ── Update index ─────────────────────────────────────────────────────
 
-function Update-Index($newCards) {
-    $index = @()
-    if (Test-Path $INDEX_FILE) {
-        try {
-            $existing = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($existing -is [array]) { $index = [System.Collections.ArrayList]@($existing) }
-            elseif ($existing) { $index = [System.Collections.ArrayList]@(,$existing) }
-            else { $index = [System.Collections.ArrayList]@() }
-        } catch {
-            Write-Host "[RADAR] WARN: Could not parse index.json, starting fresh index"
-            $index = [System.Collections.ArrayList]@()
-        }
-    } else {
-        $index = [System.Collections.ArrayList]@()
-    }
+function Update-Index {
+    [CmdletBinding()]
+    param([Parameter(Mandatory=$true)][array]$newCards)
+    $existing = Read-JsonArray $INDEX_FILE
+    $index = [System.Collections.ArrayList]@($existing)
 
     foreach ($card in $newCards) {
         $index.Add($card) | Out-Null
     }
 
-    $indexJson = @($index) | ConvertTo-Json -Depth 5
-    Set-Content -Path $INDEX_FILE -Value $indexJson -Encoding UTF8
+    Write-JsonArray $INDEX_FILE @($index)
     Write-Host "[RADAR] Index updated: $($index.Count) total cards"
 }
 
@@ -455,6 +449,8 @@ if ($allNewCards.Count -gt 0) {
 
 # ── Write metadata ───────────────────────────────────────────────────
 $Duration = ((Get-Date) - [datetime]$StartedAt).TotalSeconds
+$finalStatus = "no-cards"
+if ($allNewCards.Count -gt 0) { $finalStatus = "done" }
 $metaFinal = @{
     task_name    = "technique-radar-analyze"
     source       = $Source
@@ -463,7 +459,7 @@ $metaFinal = @{
     started_at   = $StartedAt
     completed_at = (Get-Date -Format "o")
     duration     = [math]::Round($Duration, 1)
-    status       = if ($allNewCards.Count -gt 0) { "done" } else { "no-cards" }
+    status       = $finalStatus
 } | ConvertTo-Json -Depth 3
 Set-Content -Path (Join-Path $SKILL_DIR "latest-meta.json") -Value $metaFinal -Encoding UTF8
 

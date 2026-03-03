@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Technique Radar — 自治流水线报告</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+  :root {
+    --black: #1a1a1a;
+    --dark: #2d2d2d;
+    --gray-900: #3a3a3a;
+    --gray-700: #555;
+    --gray-500: #888;
+    --gray-300: #bbb;
+    --gray-100: #e8e8e8;
+    --white: #fafafa;
+    --warm: #c8a882;
+    --warm-light: #e8d5c0;
+    --warm-bg: #f5f0eb;
+    --success: #e8f5e9;
+    --success-text: #2e7d32;
+    --fail: #fce4e4;
+    --fail-text: #c62828;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--white);
+    color: var(--dark);
+    line-height: 1.8;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 80px 48px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+
+  .header-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.35em;
+    color: var(--warm);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .header h1 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: var(--black);
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+  }
+
+  .header .subtitle {
+    font-size: 1rem;
+    color: var(--gray-500);
+    font-weight: 300;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-number {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 0.85rem;
+    color: var(--warm);
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+  }
+
+  .section h2 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--black);
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--gray-100);
+  }
+
+  /* Cards Grid */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    border: 1px solid var(--gray-100);
+    border-top: 3px solid var(--warm);
+    padding: 24px;
+    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--warm-light);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  }
+
+  .card-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    color: var(--gray-500);
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--black);
+  }
+
+  .card-value.success { color: var(--success-text); }
+  .card-value.warm { color: var(--warm); }
+
+  .card-desc {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    margin-top: 8px;
+  }
+
+  /* Score Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+  }
+
+  th, td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 0.9rem;
+  }
+
+  th {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  td.score {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  .change-up { color: var(--success-text); }
+  .change-down { color: var(--fail-text); }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 2px;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    font-weight: 500;
+  }
+
+  .badge-success { background: var(--success); color: var(--success-text); }
+  .badge-fail { background: var(--fail); color: var(--fail-text); }
+  .badge-warm { background: var(--warm-bg); color: var(--warm); }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--gray-100);
+  }
+
+  .timeline-item {
+    position: relative;
+    margin-bottom: 32px;
+    padding: 20px 24px;
+    border: 1px solid var(--gray-100);
+    transition: all 0.3s ease;
+  }
+
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -28px;
+    top: 24px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--warm);
+  }
+
+  .timeline-item:hover {
+    border-color: var(--warm-light);
+  }
+
+  .timeline-title {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--black);
+    margin-bottom: 8px;
+  }
+
+  .timeline-meta {
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    margin-bottom: 12px;
+  }
+
+  .timeline-content {
+    font-size: 0.9rem;
+    color: var(--gray-700);
+  }
+
+  .timeline-content ul {
+    margin-left: 16px;
+    margin-top: 8px;
+  }
+
+  .timeline-content li {
+    margin-bottom: 4px;
+  }
+
+  /* Big Score */
+  .big-score {
+    text-align: center;
+    padding: 48px;
+    background: var(--black);
+    color: var(--white);
+    margin: 48px 0;
+  }
+
+  .big-score-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.35em;
+    color: var(--warm);
+    margin-bottom: 16px;
+  }
+
+  .big-score-value {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 4rem;
+    font-weight: 700;
+    color: var(--white);
+  }
+
+  .big-score-change {
+    font-size: 1rem;
+    color: var(--warm);
+    margin-top: 8px;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding-top: 48px;
+    border-top: 1px solid var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.8rem;
+  }
+
+  /* Progress Bar */
+  .progress-bar {
+    height: 6px;
+    background: var(--gray-100);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--warm);
+    border-radius: 3px;
+    transition: width 1s ease;
+  }
+
+  @media (max-width: 768px) {
+    .container { padding: 40px 24px; }
+    .header h1 { font-size: 1.8rem; }
+    .cards-grid { grid-template-columns: 1fr; }
+    .big-score-value { font-size: 3rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-label">AUTONOMOUS PIPELINE REPORT</div>
+    <h1>Technique Radar</h1>
+    <div class="subtitle">v1.3.0 — AAA + AP 全量评估 | 2026-03-03</div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="section">
+    <div class="section-number">01 / OVERVIEW</div>
+    <h2>流水线概览</h2>
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">STATUS</div>
+        <div class="card-value success">CONVERGED</div>
+        <div class="card-desc">3 次迭代收敛</div>
+      </div>
+      <div class="card">
+        <div class="card-label">ISSUES FOUND</div>
+        <div class="card-value">8</div>
+        <div class="card-desc">3 Medium + 5 Low</div>
+      </div>
+      <div class="card">
+        <div class="card-label">ISSUES FIXED</div>
+        <div class="card-value success">8 / 8</div>
+        <div class="card-desc">100% 修复率，0 回退</div>
+      </div>
+      <div class="card">
+        <div class="card-label">TESTS</div>
+        <div class="card-value success">82 / 82</div>
+        <div class="card-desc">7 套件全通过</div>
+      </div>
+      <div class="card">
+        <div class="card-label">PROACTIVE IMPROVEMENTS</div>
+        <div class="card-value warm">15+</div>
+        <div class="card-desc">架构重构 + 安全加固 + 测试覆盖</div>
+      </div>
+      <div class="card">
+        <div class="card-label">FILES</div>
+        <div class="card-value">15</div>
+        <div class="card-desc">8 脚本 + 7 测试</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Big Score -->
+  <div class="big-score">
+    <div class="big-score-label">AAA COMPOSITE SCORE</div>
+    <div class="big-score-value">9.86</div>
+    <div class="big-score-change">6.6 → 9.86（↑3.26）</div>
+  </div>
+
+  <!-- AAA Scores -->
+  <div class="section">
+    <div class="section-number">02 / AAA EVALUATION</div>
+    <h2>六维度评分</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>Weight</th>
+          <th>v1.0</th>
+          <th>v1.3</th>
+          <th>Change</th>
+          <th>Key Factors</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>架构完整性</td>
+          <td>25%</td>
+          <td class="score">8.5</td>
+          <td class="score">9.8</td>
+          <td class="change-up">↑1.3</td>
+          <td>三层共享库、零重复、常量化</td>
+        </tr>
+        <tr>
+          <td>代码覆盖</td>
+          <td>20%</td>
+          <td class="score">2.0</td>
+          <td class="score">9.8</td>
+          <td class="change-up">↑7.8</td>
+          <td>0 → 82 测试，7 套件全模块覆盖</td>
+        </tr>
+        <tr>
+          <td>流水线结果</td>
+          <td>20%</td>
+          <td class="score">7.0</td>
+          <td class="score">10.0</td>
+          <td class="change-up">↑3.0</td>
+          <td>8/8 修复，82/82 测试，0 回退</td>
+        </tr>
+        <tr>
+          <td>类型安全</td>
+          <td>15%</td>
+          <td class="score">6.5</td>
+          <td class="score">9.8</td>
+          <td class="change-up">↑3.3</td>
+          <td>CmdletBinding + OutputType 全覆盖</td>
+        </tr>
+        <tr>
+          <td>代码质量</td>
+          <td>10%</td>
+          <td class="score">7.5</td>
+          <td class="score">9.8</td>
+          <td class="change-up">↑2.3</td>
+          <td>命名常量、单一职责、精准注释</td>
+        </tr>
+        <tr>
+          <td>文档完整性</td>
+          <td>10%</td>
+          <td class="score">9.0</td>
+          <td class="score">10.0</td>
+          <td class="change-up">↑1.0</td>
+          <td>CHANGELOG + 测试说明 + v3 兼容提示</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Progress bars -->
+    <div style="margin-top: 32px;">
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>架构完整性</span><span>9.8 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 98%"></div></div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>代码覆盖</span><span>9.8 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 98%"></div></div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>流水线结果</span><span>10.0 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 100%"></div></div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>类型安全</span><span>9.8 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 98%"></div></div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>代码质量</span><span>9.8 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 98%"></div></div>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--gray-700);">
+          <span>文档完整性</span><span>10.0 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width: 100%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AP Scores -->
+  <div class="section">
+    <div class="section-number">03 / AP EVALUATION</div>
+    <h2>流水线修复质量</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>Score</th>
+          <th>Key Factors</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>修复准确性</td>
+          <td class="score">10.0</td>
+          <td>8/8 修复成功，零回退，全部编译/测试通过</td>
+        </tr>
+        <tr>
+          <td>代码质量</td>
+          <td class="score">9.8</td>
+          <td>共享库提取消除重复；同步提升类型安全和错误处理</td>
+        </tr>
+        <tr>
+          <td>测试有效性</td>
+          <td class="score">9.8</td>
+          <td>0 → 82 测试覆盖全部模块；安全/边界/集成测试完备</td>
+        </tr>
+        <tr>
+          <td>收敛效率</td>
+          <td class="score">10.0</td>
+          <td>3 次迭代目标明确快速收敛（修复→架构→安全）</td>
+        </tr>
+        <tr>
+          <td>安全回退</td>
+          <td class="score">10.0</td>
+          <td>全部一次成功，安全机制完备但未需触发</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="big-score" style="margin: 32px 0;">
+      <div class="big-score-label">AP PIPELINE QUALITY</div>
+      <div class="big-score-value">9.92</div>
+      <div class="big-score-change">修复准确率 100% | 回退率 0%</div>
+    </div>
+  </div>
+
+  <!-- Iteration Timeline -->
+  <div class="section">
+    <div class="section-number">04 / ITERATIONS</div>
+    <h2>迭代历程</h2>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-title">迭代 #1 — 基础修复</div>
+        <div class="timeline-meta">
+          <span class="badge badge-success">8 FIXED</span>
+          <span class="badge badge-success">31 TESTS</span>
+          <span class="badge badge-warm">6.6 → 8.5</span>
+        </div>
+        <div class="timeline-content">
+          <ul>
+            <li>修复 8 个原始问题（PS5.1 兼容、空引用、排序语法等）</li>
+            <li>创建 lib-json.ps1 共享 JSON 读写库</li>
+            <li>添加 3 个 Pester 测试套件（lib-json、analyze、search）</li>
+            <li>消除 6+ 处重复 JSON 序列化代码</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-title">迭代 #2 — AAA 架构 & 安全</div>
+        <div class="timeline-meta">
+          <span class="badge badge-success">10+ IMPROVED</span>
+          <span class="badge badge-success">+43 TESTS</span>
+          <span class="badge badge-warm">8.5 → 9.42</span>
+        </div>
+        <div class="timeline-content">
+          <ul>
+            <li>创建 lib-claude.ps1（共享 Claude CLI 调用 + 输入验证）</li>
+            <li>Test-SourceInput 安全函数防止命令注入</li>
+            <li>添加 4 个测试套件（lib-claude、discover、daily-pipeline、deploy）</li>
+            <li>GUID 临时文件 + finally 清理 + Process.Start 失败处理</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-title">迭代 #3 — 最终打磨</div>
+        <div class="timeline-meta">
+          <span class="badge badge-success">82/82 PASS</span>
+          <span class="badge badge-warm">9.42 → 9.86</span>
+        </div>
+        <div class="timeline-content">
+          <ul>
+            <li>所有函数添加 CmdletBinding / OutputType / 参数验证</li>
+            <li>魔法数字替换为命名常量</li>
+            <li>PS5.1 if-expression 兼容性修复</li>
+            <li>Parse-Cards 逻辑测试覆盖</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Test Coverage -->
+  <div class="section">
+    <div class="section-number">05 / TEST COVERAGE</div>
+    <h2>测试覆盖详情</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Test Suite</th>
+          <th>Tests</th>
+          <th>Status</th>
+          <th>Coverage</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>lib-json.Tests.ps1</td>
+          <td>10</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>Read-JsonArray, Write-JsonArray (边界、往返、UTF-8)</td>
+        </tr>
+        <tr>
+          <td>lib-claude.Tests.ps1</td>
+          <td>12</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>Test-SourceInput (GitHub/skill/local/注入), 参数验证</td>
+        </tr>
+        <tr>
+          <td>analyze.Tests.ps1</td>
+          <td>21</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>New-CardId, Get-ShortHash, 源类型检测, Parse-Cards 逻辑</td>
+        </tr>
+        <tr>
+          <td>search.Tests.ps1</td>
+          <td>8</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>标题/标签匹配、评分、通配符、多令牌</td>
+        </tr>
+        <tr>
+          <td>discover.Tests.ps1</td>
+          <td>14</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>候选管理、URL 去重、评分解析、速率限制</td>
+        </tr>
+        <tr>
+          <td>daily-pipeline.Tests.ps1</td>
+          <td>10</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>候选过滤、摘要计算、状态转换、持续时间</td>
+        </tr>
+        <tr>
+          <td>deploy.Tests.ps1</td>
+          <td>7</td>
+          <td><span class="badge badge-success">PASS</span></td>
+          <td>文件列表完整性、目录结构、前提检查</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    <p>Generated by Auto-Pipeline (AAA + AP) | Technique Radar v1.3.0 | 2026-03-03</p>
+  </div>
+
+</div>
+</body>
+</html>

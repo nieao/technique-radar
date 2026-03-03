@@ -1,0 +1,16 @@
+# Temp files
+tmp/
+_eval_aaa.txt
+_eval_ap.txt
+_verify.ps1
+
+# Runtime data (user-specific)
+doc/cards/
+doc/index.json
+doc/candidates.json
+doc/latest-meta.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

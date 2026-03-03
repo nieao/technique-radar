@@ -1,4 +1,4 @@
----
+﻿---
 name: technique-radar
 description: Automated technique discovery, extraction, and knowledge management system. Analyzes GitHub repos, local code, and OpenClaw skills to extract reusable technique cards. Use when user says "analyze repo", "extract techniques", "scan code", "search techniques", "discover new repos", "技术雷达", "分析代码", "提取技巧", "搜索技巧". Supports three modes - discover (find new repos), analyze (extract technique cards), search (query knowledge base).
 ---
@@ -84,6 +84,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\sk
 | -Tag | No | - | Filter by specific tag |
 | -SourceType | No | - | Filter: github, local, skill |
 
+## Project Files
+
+| File | Content |
+|------|---------|
+| `analyze.ps1` | Source code analyzer (Claude CLI integration) |
+| `discover.ps1` | GitHub API repo discovery |
+| `search.ps1` | Local knowledge base search |
+| `daily-pipeline.ps1` | Daily automation pipeline |
+| `deploy.ps1` | One-click deployment |
+| `lib-json.ps1` | Shared JSON read/write utilities |
+| `lib-claude.ps1` | Shared Claude CLI invocation + input validation |
+| `PSScriptAnalyzerSettings.psd1` | Static analysis rules configuration |
+| `tests\*.Tests.ps1` | Pester unit tests (7 suites, 82 tests) |
+
 ## Result Files
 
 | File | Content |
@@ -92,6 +106,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\nieao\.openclaw\sk
 | `index.json` | Searchable index of all cards with metadata |
 | `candidates.json` | Discovered repos pending analysis |
 | `latest-meta.json` | Last operation status and timing |
+
+## Running Tests
+
+```powershell
+# Run all Pester tests (works with Pester v3+)
+Invoke-Pester -Path "doc\tests" -Verbose
+
+# Run specific test file
+Invoke-Pester -Path "doc\tests\lib-json.Tests.ps1" -Verbose
+
+# Run PSScriptAnalyzer (static analysis)
+Invoke-ScriptAnalyzer -Path doc/ -Recurse -Settings doc/PSScriptAnalyzerSettings.psd1
+```
+
+## CI/CD
+
+GitHub Actions automatically runs on push/PR to main:
+- PSScriptAnalyzer static analysis (zero warnings required)
+- Pester test suite (82 tests, zero failures required)
+
+Config: `.github/workflows/test.yml`
 
 ## Technique Card Format
 

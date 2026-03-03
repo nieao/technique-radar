@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Technique Radar — 通俗说明</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+  :root {
+    --black: #1a1a1a;
+    --dark: #2d2d2d;
+    --gray-900: #3a3a3a;
+    --gray-700: #555;
+    --gray-500: #888;
+    --gray-300: #bbb;
+    --gray-100: #e8e8e8;
+    --white: #fafafa;
+    --warm: #c8a882;
+    --warm-light: #e8d5c0;
+    --warm-bg: #f5f0eb;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--white);
+    color: var(--dark);
+    line-height: 1.9;
+  }
+
+  /* ── 建筑网格装饰 ── */
+  body::before, body::after {
+    content: '';
+    position: fixed;
+    background: var(--gray-300);
+    opacity: 0.03;
+    z-index: 0;
+    pointer-events: none;
+  }
+  body::before { top: 0; bottom: 0; left: 50%; width: 1px; }
+  body::after { left: 0; right: 0; top: 50vh; height: 1px; }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 80px 48px 120px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    margin-bottom: 100px;
+    opacity: 0;
+    transform: translateY(30px);
+    animation: fadeUp 0.8s ease forwards;
+  }
+
+  .header-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.4em;
+    color: var(--warm);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .header h1 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 2.6rem;
+    font-weight: 700;
+    color: var(--black);
+    letter-spacing: 0.03em;
+    margin-bottom: 12px;
+  }
+
+  .header .subtitle {
+    font-size: 1.05rem;
+    color: var(--gray-500);
+    font-weight: 300;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* ── Section ── */
+  .section {
+    margin-bottom: 80px;
+  }
+
+  .section.reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .section.reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .section-number {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 0.82rem;
+    color: var(--warm);
+    letter-spacing: 0.2em;
+    margin-bottom: 10px;
+  }
+
+  .section h2 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--black);
+    margin-bottom: 28px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--gray-100);
+  }
+
+  .section p {
+    font-size: 1rem;
+    color: var(--gray-700);
+    margin-bottom: 20px;
+    max-width: 780px;
+  }
+
+  /* ── 类比卡片 ── */
+  .analogy {
+    background: var(--black);
+    color: var(--white);
+    padding: 48px 56px;
+    margin: 48px 0 64px;
+    position: relative;
+  }
+
+  .analogy::before {
+    content: '\201C';
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 5rem;
+    color: var(--warm);
+    opacity: 0.5;
+    position: absolute;
+    top: 16px;
+    left: 24px;
+    line-height: 1;
+  }
+
+  .analogy p {
+    color: rgba(255,255,255,0.85);
+    font-size: 1.1rem;
+    line-height: 2;
+    max-width: 100%;
+  }
+
+  .analogy strong {
+    color: var(--warm);
+    font-weight: 500;
+  }
+
+  /* ── 流程图 ── */
+  .flow {
+    margin: 40px 0;
+  }
+
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 0;
+  }
+
+  .flow-step {
+    flex: 1;
+    padding: 28px 24px;
+    border: 1px solid var(--gray-100);
+    border-right: none;
+    text-align: center;
+    position: relative;
+    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .flow-step:last-child {
+    border-right: 1px solid var(--gray-100);
+  }
+
+  .flow-step:hover {
+    border-color: var(--warm-light);
+    background: var(--warm-bg);
+    transform: translateY(-4px);
+    z-index: 2;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  }
+
+  .flow-step::before {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 3px;
+    background: var(--warm);
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.5s ease;
+  }
+
+  .flow-step:hover::before {
+    transform: scaleX(1);
+  }
+
+  .flow-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .flow-title {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--black);
+    margin-bottom: 8px;
+  }
+
+  .flow-desc {
+    font-size: 0.82rem;
+    color: var(--gray-500);
+    line-height: 1.6;
+  }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    min-width: 48px;
+    color: var(--warm);
+    font-size: 1.2rem;
+  }
+
+  /* ── 垂直流程 ── */
+  .vflow {
+    position: relative;
+    padding-left: 40px;
+    margin: 40px 0;
+  }
+
+  .vflow::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--gray-100);
+  }
+
+  .vflow-item {
+    position: relative;
+    margin-bottom: 36px;
+    padding: 24px 28px;
+    border: 1px solid var(--gray-100);
+    transition: all 0.4s ease;
+  }
+
+  .vflow-item:hover {
+    border-color: var(--warm-light);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+  }
+
+  .vflow-item::before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 28px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--warm);
+    border: 2px solid var(--white);
+    box-shadow: 0 0 0 2px var(--warm-light);
+  }
+
+  .vflow-num {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 0.75rem;
+    color: var(--warm);
+    letter-spacing: 0.15em;
+    margin-bottom: 6px;
+  }
+
+  .vflow-title {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--black);
+    margin-bottom: 8px;
+  }
+
+  .vflow-desc {
+    font-size: 0.9rem;
+    color: var(--gray-700);
+    line-height: 1.8;
+  }
+
+  .vflow-cmd {
+    margin-top: 12px;
+    padding: 10px 16px;
+    background: var(--black);
+    color: #a8d8a8;
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    font-size: 0.8rem;
+    border-radius: 2px;
+    overflow-x: auto;
+  }
+
+  /* ── 对比表 ── */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 32px 0;
+  }
+
+  .compare-card {
+    padding: 28px;
+    border: 1px solid var(--gray-100);
+    border-top: 3px solid var(--gray-300);
+    transition: all 0.4s ease;
+  }
+
+  .compare-card.good {
+    border-top-color: var(--warm);
+  }
+
+  .compare-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  }
+
+  .compare-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: var(--gray-500);
+    margin-bottom: 12px;
+  }
+
+  .compare-card.good .compare-label {
+    color: var(--warm);
+  }
+
+  .compare-card h4 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.1rem;
+    color: var(--black);
+    margin-bottom: 12px;
+  }
+
+  .compare-card p {
+    font-size: 0.88rem;
+    color: var(--gray-700);
+    margin-bottom: 0;
+  }
+
+  /* ── 文件清单 ── */
+  .file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+
+  .file-item {
+    padding: 16px 20px;
+    border: 1px solid var(--gray-100);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: all 0.3s ease;
+  }
+
+  .file-item:hover {
+    border-color: var(--warm-light);
+    background: var(--warm-bg);
+  }
+
+  .file-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warm);
+    flex-shrink: 0;
+  }
+
+  .file-dot.lib { background: #6ba368; }
+  .file-dot.test { background: #5b8ab5; }
+  .file-dot.config { background: #b5895b; }
+
+  .file-name {
+    font-family: "Cascadia Code", "Fira Code", monospace;
+    font-size: 0.85rem;
+    color: var(--black);
+  }
+
+  .file-role {
+    font-size: 0.78rem;
+    color: var(--gray-500);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  /* ── 底部卡片组 ── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin: 32px 0;
+  }
+
+  .card {
+    border: 1px solid var(--gray-100);
+    border-top: 3px solid var(--warm);
+    padding: 28px;
+    transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--warm-light);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  }
+
+  .card-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: var(--gray-500);
+    margin-bottom: 8px;
+  }
+
+  .card h4 {
+    font-family: "Noto Serif SC", Georgia, serif;
+    font-size: 1.15rem;
+    color: var(--black);
+    margin-bottom: 10px;
+  }
+
+  .card p {
+    font-size: 0.88rem;
+    color: var(--gray-700);
+    margin-bottom: 0;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center;
+    padding-top: 60px;
+    margin-top: 40px;
+    border-top: 1px solid var(--gray-100);
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── 动画 ── */
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── 响应式 ── */
+  @media (max-width: 768px) {
+    .container { padding: 40px 20px 80px; }
+    .header h1 { font-size: 1.8rem; }
+    .header { margin-bottom: 60px; }
+    .flow-row { flex-direction: column; }
+    .flow-arrow { width: auto; height: 32px; transform: rotate(90deg); }
+    .flow-step { border-right: 1px solid var(--gray-100); }
+    .compare { grid-template-columns: 1fr; }
+    .analogy { padding: 36px 28px; }
+    .analogy::before { font-size: 3rem; top: 8px; left: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ════ HEADER ════ -->
+  <div class="header">
+    <div class="header-label">TECHNIQUE RADAR / GUIDE</div>
+    <h1>技术雷达 — 使用说明</h1>
+    <div class="subtitle">自动发现、提取、搜索代码中的可复用技巧和架构模式</div>
+  </div>
+
+  <!-- ════ 01 一句话解释 ════ -->
+  <div class="section reveal">
+    <div class="section-number">01 / WHAT IS IT</div>
+    <h2>这东西是干嘛的？</h2>
+
+    <div class="analogy">
+      <p>
+        你平时逛 GitHub 看到好代码，会想「这个写法不错，下次用得上」——<br>
+        但过几天就忘了在哪看的、怎么写的。<br><br>
+        <strong>技术雷达</strong>就是帮你自动干这件事的工具：<br>
+        扫描代码 → AI 提取精华 → 存成卡片 → 随时搜索。<br><br>
+        相当于你的<strong>「代码笔记本」</strong>，只不过记笔记的活儿交给 AI 了。
+      </p>
+    </div>
+  </div>
+
+  <!-- ════ 02 核心流程图 ════ -->
+  <div class="section reveal">
+    <div class="section-number">02 / HOW IT WORKS</div>
+    <h2>工作流程</h2>
+
+    <p>整个系统只做三件事，对应三个命令：</p>
+
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-step">
+          <span class="flow-icon">1</span>
+          <div class="flow-title">发现</div>
+          <div class="flow-desc">从 GitHub 热门仓库中<br>找到值得学习的项目</div>
+        </div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">
+          <span class="flow-icon">2</span>
+          <div class="flow-title">分析</div>
+          <div class="flow-desc">AI 读源码，提取<br>可复用的技巧卡片</div>
+        </div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-step">
+          <span class="flow-icon">3</span>
+          <div class="flow-title">搜索</div>
+          <div class="flow-desc">想用某个技巧时<br>一搜就能找到</div>
+        </div>
+      </div>
+    </div>
+
+    <p>还有一个自动化命令，把「发现 + 分析」串起来每天自动跑：</p>
+
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-step" style="flex: 2;">
+          <span class="flow-icon">&#x21BB;</span>
+          <div class="flow-title">每日流水线</div>
+          <div class="flow-desc">自动发现新仓库 → AI 评分 → 高分的自动分析 → 生成当日报告</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 03 详细流程 ════ -->
+  <div class="section reveal">
+    <div class="section-number">03 / STEP BY STEP</div>
+    <h2>每一步具体做了什么</h2>
+
+    <div class="vflow">
+      <div class="vflow-item">
+        <div class="vflow-num">STEP 01 / DISCOVER</div>
+        <div class="vflow-title">发现新仓库</div>
+        <div class="vflow-desc">
+          调用 GitHub API，按主题（ai-agent、mcp-server 等）搜索最近活跃的高星仓库。
+          找到后让 AI 快速打个分（1-10 分），低于 4 分的直接跳过，省得浪费时间。
+          结果存到 <code>candidates.json</code>。
+        </div>
+        <div class="vflow-cmd">powershell -File discover.ps1</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">STEP 02 / ANALYZE</div>
+        <div class="vflow-title">AI 分析源码</div>
+        <div class="vflow-desc">
+          把源码喂给 Claude，让它像高级工程师一样审查代码。<br>
+          提取出「这个问题怎么解决的」「精华代码片段」「什么场景能复用」。<br>
+          每个技巧生成一张<strong>技术卡片</strong>（Markdown 文件），存到 <code>cards/</code> 目录。
+          同时更新 <code>index.json</code> 索引。
+        </div>
+        <div class="vflow-cmd">powershell -File analyze.ps1 -Source "https://github.com/user/repo"</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">STEP 03 / SEARCH</div>
+        <div class="vflow-title">搜索知识库</div>
+        <div class="vflow-desc">
+          输入关键词，搜索你积累的所有技术卡片。<br>
+          支持按标签、来源类型、评分等过滤。<br>
+          标题和标签匹配会加分，全部关键词都命中还有额外加分。
+        </div>
+        <div class="vflow-cmd">powershell -File search.ps1 -Query "async agent pattern"</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">STEP 04 / DAILY PIPELINE</div>
+        <div class="vflow-title">每日自动流水线</div>
+        <div class="vflow-desc">
+          一键执行：发现新仓库 → 自动分析高分候选 → 生成当日摘要。<br>
+          可以用 Windows 任务计划程序设定每天早上自动跑，实现<strong>全自动知识积累</strong>。
+        </div>
+        <div class="vflow-cmd">powershell -File daily-pipeline.ps1</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 04 技术卡片长什么样 ════ -->
+  <div class="section reveal">
+    <div class="section-number">04 / TECHNIQUE CARD</div>
+    <h2>技术卡片长什么样</h2>
+
+    <p>每张卡片就是一个 Markdown 文件，记录一个可复用的代码技巧：</p>
+
+    <div style="background: var(--black); color: #ddd; padding: 32px; margin: 24px 0; font-family: 'Cascadia Code','Fira Code',monospace; font-size: 0.82rem; line-height: 1.8; overflow-x: auto;">
+<pre style="margin:0;">
+<span style="color:var(--warm)">---</span>
+<span style="color:#888">id:</span>        tc-20260303-a8f2c1
+<span style="color:#888">title:</span>     <span style="color:#a8d8a8">Async Agent Loop with Graceful Shutdown</span>
+<span style="color:#888">tags:</span>      [async, agent, shutdown, signal-handling]
+<span style="color:#888">problem:</span>   Agent needs to run continuously but stop cleanly
+<span style="color:#888">cleverness:</span>  <span style="color:var(--warm)">8</span>/10
+<span style="color:#888">reusability:</span> <span style="color:var(--warm)">9</span>/10
+<span style="color:var(--warm)">---</span>
+
+<span style="color:var(--warm)">## Problem</span>
+  Agent 需要持续运行，但收到终止信号时要优雅停止...
+
+<span style="color:var(--warm)">## Technique</span>
+  用 AbortController + Promise.race 实现超时控制...
+
+<span style="color:var(--warm)">## Code</span>
+  <span style="color:#888">（精简到 5-30 行的核心代码片段）</span>
+
+<span style="color:var(--warm)">## Why It's Clever</span>
+  比 setTimeout 更优雅，因为...
+
+<span style="color:var(--warm)">## When To Use</span>
+  - 需要长时间运行的 Agent
+  - 需要优雅停止的后台任务
+</pre>
+    </div>
+  </div>
+
+  <!-- ════ 05 文件结构 ════ -->
+  <div class="section reveal">
+    <div class="section-number">05 / FILE STRUCTURE</div>
+    <h2>项目文件一览</h2>
+
+    <p>所有文件分三类：<strong>主脚本</strong>（干活的）、<strong>共享库</strong>（被复用的工具）、<strong>测试</strong>（验证代码正确性的）。</p>
+
+    <div class="file-grid">
+      <div class="file-item">
+        <div class="file-dot"></div>
+        <span class="file-name">analyze.ps1</span>
+        <span class="file-role">源码分析器</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot"></div>
+        <span class="file-name">discover.ps1</span>
+        <span class="file-role">仓库发现器</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot"></div>
+        <span class="file-name">search.ps1</span>
+        <span class="file-role">知识库搜索</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot"></div>
+        <span class="file-name">daily-pipeline.ps1</span>
+        <span class="file-role">每日自动化</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot"></div>
+        <span class="file-name">deploy.ps1</span>
+        <span class="file-role">一键部署</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot lib"></div>
+        <span class="file-name">lib-json.ps1</span>
+        <span class="file-role">JSON 读写工具</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot lib"></div>
+        <span class="file-name">lib-claude.ps1</span>
+        <span class="file-role">AI 调用 + 安全验证</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot test"></div>
+        <span class="file-name">tests/*.Tests.ps1</span>
+        <span class="file-role">82 个自动化测试</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot config"></div>
+        <span class="file-name">PSScriptAnalyzerSettings.psd1</span>
+        <span class="file-role">代码规范配置</span>
+      </div>
+    </div>
+
+    <p>运行时会产生的数据文件：</p>
+
+    <div class="file-grid">
+      <div class="file-item">
+        <div class="file-dot config"></div>
+        <span class="file-name">index.json</span>
+        <span class="file-role">所有卡片的索引</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot config"></div>
+        <span class="file-name">candidates.json</span>
+        <span class="file-role">待分析的仓库列表</span>
+      </div>
+      <div class="file-item">
+        <div class="file-dot config"></div>
+        <span class="file-name">cards/*.md</span>
+        <span class="file-role">每张技术卡片</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 06 质量保障 ════ -->
+  <div class="section reveal">
+    <div class="section-number">06 / QUALITY</div>
+    <h2>代码质量保障</h2>
+
+    <p>两道自动化防线确保代码始终可靠：</p>
+
+    <div class="compare">
+      <div class="compare-card good">
+        <div class="compare-label">PSCRIPTANALYZER</div>
+        <h4>静态代码分析</h4>
+        <p>
+          相当于代码的「体检仪」。<br>
+          自动检查命名规范、未使用的变量、安全隐患、兼容性问题。<br>
+          不用运行代码就能发现潜在 bug。<br><br>
+          当前状态：<strong>0 警告</strong>
+        </p>
+      </div>
+      <div class="compare-card good">
+        <div class="compare-label">GITHUB ACTIONS CI</div>
+        <h4>自动化测试流水线</h4>
+        <p>
+          每次推送代码到 GitHub，自动运行全部 82 个测试。<br>
+          通过 = 绿灯，失败 = 红灯，一目了然。<br>
+          防止坏代码合并到主分支。<br><br>
+          当前状态：<strong>82 测试全通过</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 07 快速上手 ════ -->
+  <div class="section reveal">
+    <div class="section-number">07 / QUICK START</div>
+    <h2>快速上手</h2>
+
+    <div class="vflow">
+      <div class="vflow-item">
+        <div class="vflow-num">FIRST / DEPLOY</div>
+        <div class="vflow-title">第一步：部署</div>
+        <div class="vflow-desc">运行部署脚本，自动复制所有文件到正确位置。</div>
+        <div class="vflow-cmd">powershell -NoProfile -ExecutionPolicy Bypass -File deploy.ps1</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">THEN / ANALYZE</div>
+        <div class="vflow-title">第二步：分析一个仓库试试</div>
+        <div class="vflow-desc">选一个你感兴趣的 GitHub 项目，让 AI 提取技巧。</div>
+        <div class="vflow-cmd">powershell -File analyze.ps1 -Source "https://github.com/browser-use/browser-use"</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">THEN / SEARCH</div>
+        <div class="vflow-title">第三步：搜索你的知识库</div>
+        <div class="vflow-desc">分析完成后，试试搜索刚提取的技巧。</div>
+        <div class="vflow-cmd">powershell -File search.ps1 -Query "agent async"</div>
+      </div>
+
+      <div class="vflow-item">
+        <div class="vflow-num">OPTIONAL / AUTOMATE</div>
+        <div class="vflow-title">可选：设置每日自动运行</div>
+        <div class="vflow-desc">
+          用 Windows 任务计划程序，设定 daily-pipeline.ps1 每天早上自动运行。<br>
+          之后每天起床，知识库里就多了新的技巧卡片。
+        </div>
+        <div class="vflow-cmd">powershell -File daily-pipeline.ps1</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ 08 常见问题 ════ -->
+  <div class="section reveal">
+    <div class="section-number">08 / FAQ</div>
+    <h2>常见问题</h2>
+
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>需要联网吗？</h4>
+        <p>分析 GitHub 仓库需要联网（克隆代码 + 调用 AI）。分析本地代码只需要 Claude CLI。搜索完全离线。</p>
+      </div>
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>需要 API Key 吗？</h4>
+        <p>不需要。使用本地已认证的 Claude CLI，零 API 成本。GitHub Token 可选（有了能搜更多仓库）。</p>
+      </div>
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>分析一个仓库要多久？</h4>
+        <p>通常 1-3 分钟。取决于仓库大小和 Claude 响应速度。超时默认 180 秒，可通过 -Timeout 调整。</p>
+      </div>
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>卡片会重复吗？</h4>
+        <p>不会。每个源有唯一哈希值，分析过的源会自动跳过。想重新分析加 -Force 参数。</p>
+      </div>
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>支持什么语言？</h4>
+        <p>Python、JavaScript/TypeScript、Go、Rust、PowerShell、Shell 等，只要 Claude 能读懂的代码都行。</p>
+      </div>
+      <div class="card">
+        <div class="card-label">QUESTION</div>
+        <h4>Windows 版本要求？</h4>
+        <p>Windows 10/11 自带的 PowerShell 5.1 就行，不需要装 PowerShell 7。完全兼容。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ FOOTER ════ -->
+  <div class="footer">
+    Technique Radar v1.3.0 &middot; 82 Tests Passing &middot; PSScriptAnalyzer Clean &middot; 2026-03-03
+  </div>
+
+</div>
+
+<script>
+  // 滚动入场动画
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 80);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

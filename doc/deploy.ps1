@@ -1,4 +1,4 @@
-# Technique Radar - One-Click Deployer
+﻿# Technique Radar - One-Click Deployer
 # Run: powershell -NoProfile -ExecutionPolicy Bypass -File deploy.ps1
 
 $ErrorActionPreference = "Stop"
@@ -17,7 +17,7 @@ foreach ($sub in @("cards\github","cards\local","cards\skill")) {
 }
 
 # ── Copy all script files ─────────────────────────────────────────────
-$filesToCopy = @("SKILL.md", "analyze.ps1", "discover.ps1", "search.ps1", "daily-pipeline.ps1")
+$filesToCopy = @("SKILL.md", "analyze.ps1", "discover.ps1", "search.ps1", "daily-pipeline.ps1", "deploy.ps1", "lib-json.ps1", "lib-claude.ps1", "PSScriptAnalyzerSettings.psd1")
 
 foreach ($f in $filesToCopy) {
     $src = Join-Path $SOURCE_DIR $f
@@ -57,21 +57,21 @@ foreach ($f in $filesToCopy) {
     }
 }
 
+if (-not $allGood) {
+    Write-Host "`n[DEPLOY] WARNING: Some files were not copied successfully"
+}
+
 # Check Claude CLI availability
-$claudeAvailable = $false
-try {
-    $null = Get-Command claude -ErrorAction SilentlyContinue
-    $claudeAvailable = $true
+if (Get-Command claude -ErrorAction SilentlyContinue) {
     Write-Host "  [OK] Claude CLI found"
-} catch {
+} else {
     Write-Host "  [WARN] Claude CLI not in PATH - analyze will not work"
 }
 
 # Check git availability
-try {
-    $null = Get-Command git -ErrorAction SilentlyContinue
+if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "  [OK] Git found"
-} catch {
+} else {
     Write-Host "  [WARN] Git not in PATH - GitHub repo cloning will not work"
 }
 
