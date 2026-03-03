@@ -89,16 +89,18 @@ foreach ($topic in $topicList) {
             }
 
             $candidate = @{
-                url          = $repoUrl
-                name         = $repo.full_name
-                description  = if ($repo.description) { $repo.description.Substring(0, [Math]::Min(200, $repo.description.Length)) } else { "" }
-                stars        = $repo.stargazers_count
-                language     = $repo.language
-                topics       = $repo.topics
-                pushed_at    = $repo.pushed_at
-                discovered   = (Get-Date -Format "yyyy-MM-dd")
-                status       = "pending"  # pending | analyzing | done | skipped
-                match_topic  = $topic
+                url              = $repoUrl
+                name             = $repo.full_name
+                description      = if ($repo.description) { $repo.description.Substring(0, [Math]::Min(200, $repo.description.Length)) } else { "" }
+                stars            = $repo.stargazers_count
+                language         = $repo.language
+                topics           = $repo.topics
+                pushed_at        = $repo.pushed_at
+                discovered       = (Get-Date -Format "yyyy-MM-dd")
+                status           = "pending"  # pending | analyzing | done | skipped
+                match_topic      = $topic
+                relevance_score  = 5          # default; overwritten by Claude scoring
+                relevance_reason = ""
             }
 
             $newCandidates += $candidate
@@ -111,7 +113,13 @@ foreach ($topic in $topicList) {
         Start-Sleep -Milliseconds 1000
 
     } catch {
-        Write-Host "[DISCOVER] API error for topic '$topic': $($_.Exception.Message)"
+        $errMsg = $_.Exception.Message
+        Write-Host "[DISCOVER] API error for topic '$topic': $errMsg"
+        # Back off on rate limit (403/429)
+        if ($errMsg -match "403|429|rate limit") {
+            Write-Host "[DISCOVER] Rate limited, waiting 30s before next topic..."
+            Start-Sleep -Seconds 30
+        }
         continue
     }
 }
@@ -161,6 +169,8 @@ $candidateList
     $proc.StartInfo.RedirectStandardError = $true
     $proc.StartInfo.CreateNoWindow = $true
     $proc.StartInfo.WorkingDirectory = $TEMP_DIR
+    # Allow claude CLI to run inside a Claude Code session
+    $proc.StartInfo.EnvironmentVariables.Remove("CLAUDECODE") | Out-Null
     $proc.Start() | Out-Null
 
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
@@ -203,7 +213,7 @@ $allCandidates = $allCandidates | Sort-Object {
     if ($_.status -eq "pending") { 0 } else { 1 }
 }, { -($_.relevance_score) }
 
-$candidatesJson = $allCandidates | ConvertTo-Json -Depth 5
+$candidatesJson = @($allCandidates) | ConvertTo-Json -Depth 5
 Set-Content -Path $CANDIDATES_FILE -Value $candidatesJson -Encoding UTF8
 
 # ── Summary ───────────────────────────────────────────────────────────
