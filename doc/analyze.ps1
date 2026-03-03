@@ -66,7 +66,7 @@ if ($Source -match "^https?://github\.com/") {
 }
 
 # ── Check if already analyzed (skip if -Force) ──────────────────────
-if (-not $Force -and $SourceType -ne "skill" -or ($SourceType -eq "skill" -and $skillName -ne "*")) {
+if ((-not $Force) -and -not ($SourceType -eq "skill" -and $skillName -eq "*")) {
     $existingHash = Get-ShortHash $Source
     if (Test-Path $INDEX_FILE) {
         $existingIndex = Get-Content $INDEX_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
