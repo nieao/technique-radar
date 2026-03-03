@@ -5,7 +5,7 @@ param(
     [string]$Source,
 
     [int]$Timeout = 180,
-    [int]$MaxFiles = 20,
+    [int]$MaxFiles = 15,
     [switch]$Force
 )
 
@@ -16,8 +16,8 @@ $INDEX_FILE  = Join-Path $SKILL_DIR "index.json"
 $TEMP_DIR    = Join-Path $env:TEMP "technique-radar"
 
 # Tunable constants
-$MAX_FILE_CHARS   = 8000   # Max chars per file before truncation
-$MAX_TOTAL_CHARS  = 60000  # Max total material chars
+$MAX_FILE_CHARS   = 4000   # Max chars per file before truncation (from 8000)
+$MAX_TOTAL_CHARS  = 35000  # Max total material chars (from 60000)
 $MIN_CARD_LENGTH  = 100    # Min chars for a valid card fragment
 
 # Import shared utilities
@@ -101,9 +101,9 @@ function Get-GitHubMaterial {
     $cloneDir = Join-Path $TEMP_DIR "repo-$(Get-ShortHash $repoUrl)"
     if (Test-Path $cloneDir) { Remove-Item -Recurse -Force $cloneDir }
 
-    # Shallow clone
+    # Shallow clone (cmd /c 避免 PowerShell 把 git stderr 当异常)
     Write-Host "[RADAR] Cloning repo (shallow)..."
-    git clone --depth 1 $repoUrl $cloneDir 2>&1 | Out-Null
+    cmd /c "git clone --depth 1 `"$repoUrl`" `"$cloneDir`" 2>&1" | Out-Null
 
     if (-not (Test-Path $cloneDir)) {
         Write-Host "[RADAR] Clone failed, trying via GitHub API..."
@@ -148,13 +148,154 @@ function Get-SkillMaterial {
     return Collect-SourceFiles $skillPath
 }
 
+# ── Helper: 仓库结构摘要（tree -L 2 风格）──────────────────────────
+function Get-RepoStructure {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory=$true)][string]$RootDir,
+        [int]$MaxEntries = 40
+    )
+    $skipDirs = @("node_modules",".git","__pycache__",".venv","dist","build",".next","vendor",
+                  "coverage",".nyc_output",".tox",".mypy_cache",".pytest_cache")
+    $entries = [System.Collections.ArrayList]::new()
+    $dirCount = 0; $fileCount = 0
+
+    # 顶层项目
+    $topItems = Get-ChildItem -Path $RootDir -ErrorAction SilentlyContinue | Sort-Object { -not $_.PSIsContainer }, Name
+    foreach ($item in $topItems) {
+        if ($entries.Count -ge $MaxEntries) { break }
+        if ($item.PSIsContainer) {
+            if ($item.Name -in $skipDirs) { continue }
+            $dirCount++
+            $entries.Add([string]"$([char]0x251C)$([char]0x2500)$([char]0x2500) $($item.Name)/") | Out-Null
+            # 二级子项
+            $subItems = Get-ChildItem -Path $item.FullName -ErrorAction SilentlyContinue | Sort-Object { -not $_.PSIsContainer }, Name
+            foreach ($sub in $subItems) {
+                if ($entries.Count -ge $MaxEntries) { break }
+                if ($sub.PSIsContainer) {
+                    if ($sub.Name -in $skipDirs) { continue }
+                    $dirCount++
+                    $entries.Add([string]"$([char]0x2502)   $([char]0x251C)$([char]0x2500)$([char]0x2500) $($sub.Name)/") | Out-Null
+                } else {
+                    $fileCount++
+                    $entries.Add([string]"$([char]0x2502)   $([char]0x251C)$([char]0x2500)$([char]0x2500) $($sub.Name)") | Out-Null
+                }
+            }
+        } else {
+            $fileCount++
+            $entries.Add([string]"$([char]0x251C)$([char]0x2500)$([char]0x2500) $($item.Name)") | Out-Null
+        }
+    }
+
+    $tree = $entries -join "`n"
+    if ($entries.Count -ge $MaxEntries) {
+        $tree += "`n... (truncated)"
+    }
+    $summary = "($fileCount source files, $dirCount directories)"
+
+    return "=== REPO STRUCTURE ===`n$tree`n$summary`n"
+}
+
+# ── Helper: 内容级智能裁剪 ─────────────────────────────────────────
+function Trim-FileContent {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory=$true)][string]$Content,
+        [int]$MaxChars = $MAX_FILE_CHARS
+    )
+    $text = $Content
+
+    # 1. 去除多行注释块: /* ... */, """ ... """, <# ... #>
+    $text = [regex]::Replace($text, '/\*[\s\S]*?\*/', '')
+    $text = [regex]::Replace($text, '"""[\s\S]*?"""', '""""""')
+    $text = [regex]::Replace($text, "'''[\s\S]*?'''", "''''''")
+    $text = [regex]::Replace($text, '<#[\s\S]*?#>', '')
+
+    # 2. 合并连续空行为一行
+    $text = [regex]::Replace($text, '(\r?\n\s*){3,}', "`n`n")
+
+    # 3. 替换超长字符串字面量 (>200 字符)
+    $text = [regex]::Replace($text, '"[^"\r\n]{200,}"', '"[... long string ...]"')
+    $text = [regex]::Replace($text, "'[^'\r\n]{200,}'", "'[... long string ...]'")
+
+    # 4. 压缩 import/require 堆积（连续 >15 行只保留前 5 行）
+    $lines = $text -split "`n"
+    $result = [System.Collections.ArrayList]::new()
+    $importRun = [System.Collections.ArrayList]::new()
+
+    foreach ($line in $lines) {
+        if ($line -match '^\s*(import |from .+ import|require\(|using |#include )') {
+            $importRun.Add($line) | Out-Null
+        } else {
+            if ($importRun.Count -gt 15) {
+                for ($i = 0; $i -lt 5; $i++) { $result.Add($importRun[$i]) | Out-Null }
+                $result.Add("// ... ($($importRun.Count - 5) more imports omitted)") | Out-Null
+            } elseif ($importRun.Count -gt 0) {
+                foreach ($imp in $importRun) { $result.Add($imp) | Out-Null }
+            }
+            $importRun.Clear()
+            $result.Add($line) | Out-Null
+        }
+    }
+    # 处理尾部残余的 import 块
+    if ($importRun.Count -gt 15) {
+        for ($i = 0; $i -lt 5; $i++) { $result.Add($importRun[$i]) | Out-Null }
+        $result.Add("// ... ($($importRun.Count - 5) more imports omitted)") | Out-Null
+    } elseif ($importRun.Count -gt 0) {
+        foreach ($imp in $importRun) { $result.Add($imp) | Out-Null }
+    }
+
+    $text = $result -join "`n"
+
+    # 5. 大文件摘要模式：若裁剪后仍超限，提取函数/类签名
+    if ($text.Length -gt $MaxChars) {
+        $sigLines = ($text -split "`n") | Where-Object {
+            $_ -match '^\s*(def |function |class |interface |struct |enum |pub fn |fn |export |module |type |const |async function |async def )'
+        }
+        if ($sigLines.Count -gt 0) {
+            $summary = "// [SMART TRIM] File too large - showing signatures only ($($sigLines.Count) definitions)`n"
+            $summary += ($sigLines -join "`n")
+            # 保留开头部分作为上下文
+            $headerLen = [math]::Min(800, $MaxChars / 3)
+            $text = $text.Substring(0, [int]$headerLen) + "`n`n$summary"
+        }
+    }
+
+    # 最终硬截断
+    if ($text.Length -gt $MaxChars) {
+        $text = $text.Substring(0, $MaxChars) + "`n... [TRIMMED at $MaxChars chars]"
+    }
+
+    return $text
+}
+
 function Collect-SourceFiles {
     [CmdletBinding()]
     [OutputType([string])]
     param([Parameter(Mandatory=$true)][string]$rootDir)
     $extensions = @("*.py","*.js","*.ts","*.ps1","*.md","*.json","*.yaml","*.yml","*.toml","*.sh","*.go","*.rs","*.cmd","*.bat")
-    $skipDirs = @("node_modules",".git","__pycache__",".venv","dist","build",".next","vendor")
+    $skipDirs = @(
+        # 包管理 / 构建产物
+        "node_modules",".git","__pycache__",".venv","dist","build",".next","vendor",
+        # 测试目录
+        "test","tests","__tests__","spec","specs","fixtures","testdata",
+        # 示例 / 文档
+        "examples","example","samples","docs","documentation",
+        # 基准 / CI / IDE
+        "benchmarks","bench",".github",".vscode",".idea",
+        # 覆盖率 / 缓存
+        "coverage",".nyc_output",".tox",".mypy_cache",".pytest_cache",
+        # 数据库迁移 / 静态资源
+        "migrations","static","assets","images","fonts","icons",
+        # E2E 测试框架
+        "e2e","cypress","playwright"
+    )
     $material = ""
+
+    # 插入仓库结构摘要
+    $material += Get-RepoStructure -RootDir $rootDir
 
     # Always include README first
     $readmes = Get-ChildItem -Path $rootDir -Filter "README*" -File -ErrorAction SilentlyContinue
@@ -179,14 +320,24 @@ function Collect-SourceFiles {
         $allFiles += $found
     }
 
-    # Prioritize: SKILL.md, main/index/app files, then by size (smaller = more focused)
+    # 优先级评分：元信息 → 入口 → 配置 → 核心源码 → 小文件 → 其他，测试降级
     $prioritized = $allFiles | Sort-Object {
         $name = $_.Name.ToLower()
-        if ($name -eq "skill.md") { 0 }
+        $relPath = $_.FullName.Replace($rootDir, "").TrimStart('\','/').ToLower()
+        # 降级：名字含 test/spec/mock/fixture/example 的排到最后
+        if ($name -match "(test|spec|mock|fixture|example)") { 99 }
+        # 优先级 0：README、SKILL.md（元信息文件）
+        elseif ($name -eq "skill.md" -or $name -match "^readme") { 0 }
+        # 优先级 1：入口文件
         elseif ($name -match "^(main|index|app|cli|agent|server)\." ) { 1 }
-        elseif ($name -match "^(config|package|pyproject|cargo)\." ) { 2 }
-        elseif ($_.Length -lt 5000) { 3 }
-        else { 4 }
+        # 优先级 2：配置文件
+        elseif ($name -match "^(package\.json|pyproject\.toml|cargo\.toml|go\.mod)$" ) { 2 }
+        # 优先级 3：src/lib/core 目录下的文件
+        elseif ($relPath -match "^(src|lib|core)[/\\]") { 3 }
+        # 优先级 4：小文件 < 3000 字符
+        elseif ($_.Length -lt 3000) { 4 }
+        # 优先级 5：其他
+        else { 5 }
     } | Select-Object -First $MaxFiles
 
     foreach ($f in $prioritized) {
@@ -194,10 +345,7 @@ function Collect-SourceFiles {
         $relPath = $f.FullName.Replace($rootDir, "").TrimStart('\','/')
         $content = Get-Content $f.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($content -and $content.Length -gt 0) {
-            # Truncate very large files
-            if ($content.Length -gt $MAX_FILE_CHARS) {
-                $content = $content.Substring(0, $MAX_FILE_CHARS) + "`n... [TRUNCATED at $MAX_FILE_CHARS chars]"
-            }
+            $content = Trim-FileContent -Content $content -MaxChars $MAX_FILE_CHARS
             $material += "`n=== FILE: $relPath ===`n$content`n"
         }
     }
